@@ -34,13 +34,17 @@ static cv::Mat visualize(cv::Mat input, cv::Mat faces, bool print_flag=false, do
 }
 
 
-static cv::Mat visualize_back(cv::Mat input, cv::Mat faces,int scale,int thickness = 2)
+static cv::Mat visualize_back(cv::Mat input, cv::Mat faces,float scale,int thickness = 2)
 {
  cv::Mat output = input.clone();
  for (int i = 0; i < faces.rows; i++)
  {
   // Draw bounding box
-  cv::rectangle(output, cv::Rect2i(int(faces.at<float>(i, 0))*scale, int(faces.at<float>(i, 1))*scale, int(faces.at<float>(i, 2)) * scale, int(faces.at<float>(i, 3)) * scale), cv::Scalar(255, 0, 0), thickness);
+  int x = int(faces.at<float>(i, 0)) * scale;
+  int y = int(faces.at<float>(i, 1)) * scale;
+  int w = int(faces.at<float>(i, 2)) * scale;
+  int h = int(faces.at<float>(i, 3)) * scale;
+  cv::rectangle(output, cv::Rect2i(x,y,w,h), cv::Scalar(255, 0, 0), thickness);
  }
  return output;
 }
@@ -84,7 +88,11 @@ void TestDnnCaptrue() {
   //cap.open(deviceId, cv::CAP_ANY);
   //int frameWidth = int(cap.get(cv::CAP_PROP_FRAME_WIDTH));
   //int frameHeight = int(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-  
+  cap.set( cv::CAP_PROP_FRAME_WIDTH,1280);
+  cap.set(cv::CAP_PROP_FRAME_HEIGHT,720);
+  //cap.set(cv::CAP_PROP_FRAME_WIDTH, 1920);
+  //cap.set(cv::CAP_PROP_FRAME_HEIGHT, 1080);
+
   cv::Mat frame;
   cv::TickMeter tm;
   while (cv::waitKey(30) != 27) //Press any key to exit
@@ -98,10 +106,15 @@ void TestDnnCaptrue() {
    
    cv::Mat src(frame);
    //float scale = 0.088;   
-   //float scale = 0.15;
-   float scale = 0.5;
-   int width = src.cols * scale;
-   int hight = src.rows * scale;
+   float scale = 0.15;
+   //float scale = 0.5;
+   
+   int width = 120;
+   int hight = src.rows*width/src.cols;
+   scale = width*1.0 / src.cols* 1.0;
+
+   //int width = src.cols * scale;
+   //int hight = src.rows * scale;
    cv::resize(src, frame, cv::Size(width, hight));
    //faceDetector->setInputSize(cv::Size(src.cols, src.rows));
    faceDetector->setInputSize(cv::Size(width, hight));
@@ -110,10 +123,45 @@ void TestDnnCaptrue() {
    
    //cv::Mat vis_frame = visualize(frame, faces, false, tm.getFPS());
    float k = 1.0 / scale;
-   faces.cols = faces.cols * k;
-   faces.rows = faces.rows * k;
-   cv::Mat vis_frame = visualize_back(src,faces, k);
-   imshow("libfacedetection demo", vis_frame);
+   //faces.cols = faces.cols* k;
+   //faces.rows = faces.rows* k;
+   k = k + 0.2;
+   if (faces.rows == 0) {
+    continue;
+   }
+   //begin
+   int x = int(faces.at<float>(0, 0)) * k;
+   int y = int(faces.at<float>(0, 1)) * k;
+   int w = int(faces.at<float>(0, 2)) * k;
+   int h = int(faces.at<float>(0, 3)) * k;
+   cv::Rect2i rect2i =  cv::Rect2i(x, y, w, h);
+   //cut
+   Rect rect(x, y, w, h);
+   Mat cut = src(rect);
+   Mat cut2;
+   //放大
+   cv::resize(cut, cut2, cv::Size(w, h));
+
+   //双边滤波
+   int value1 = 3, value2 = 1; //磨皮程度与细节程度的确定
+   int dx = value1 * 5;    //双边滤波参数之一  
+   double fc = value1 * 12; //双边滤波参数之一  
+   int p = 50; //透明度 
+   Mat sdst;
+   cv::bilateralFilter(cut, sdst, dx, fc, fc);
+   //imshow("libfacedetection demo", sdst);
+   // 高斯模糊
+   cv::Mat gdst;   
+   cv::GaussianBlur(sdst, gdst, Size(2 * value2 - 1, 2 * value2 - 1), 0, 0);
+   //合并回原图。
+   cv::Mat mer = src(rect);
+   gdst.copyTo(mer);
+
+   imshow("libfacedetection demo", src);
+   //end 
+   //merge
+   //cv::Mat vis_frame = visualize_back(src,faces,k);//0.2 是恢复浮点和整型计算反复四舍五入误差。经验值。效果良好。
+   //imshow("libfacedetection demo", vis_frame);
    
    tm.reset();
    std::chrono::time_point<std::chrono::steady_clock>  end = std::chrono::steady_clock::now();
